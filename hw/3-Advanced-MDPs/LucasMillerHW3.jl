@@ -101,7 +101,7 @@ end
 # expect that few branches have only been traversed once, but in this tree most
 # of them are showing a count of zero... 
 
-function search(N, S, A, state, exploration_bonus=1.0)
+function search(Q, N, S, A, state, exploration_bonus=1.0)
     if !(state in S)
       return nothing
     end
@@ -147,16 +147,43 @@ end
 #  return reward + discount(q3_mdp) * rollout(next_state, depth-1)
 #end
 
+function explore(Q, N, t, A, c)
+  Ns = sum(N[(s,a)] for a in A)
+  return argmax(a->Q[(s,a)] + c*bonus(N[(s,a)], Ns), A)
+end
+
+function mctsr(mdp::HW3.DenseGridWorld, start_state, Q, N, t, A, c, d=10)
+  if d ≤ 0
+    return π.U(s)
+  end
+
+  if !haskey(N, (start_state, first(A)))
+    for a in A
+      N[(s,a)] = 0
+      Q[(s,a)] = 0.0
+    end
+    return 
+  end
+
+  a = explore(Q, N, t, A, c)
+  next_state, reward = @gen(:sp, :r)(mdp, state, action)
+  q = reward + discount(mdp)*simulate!(mdp, next_state, d-1)
+  N[(s,a)] += 1
+  Q[(s,a)] += (q-Q[(s,a)])/N[(s,a)]
+  return q
+end
+
 function mcts(mdp::HW3.DenseGridWorld, start_state, Q, N, t, iterations=7)
   S = states(mdp)
   A = actions(mdp)
-    # Run for fixed number of iterations
+
+  # Run for fixed number of iterations
   for k in 1:iterations
     state = start_state
     path = []
 
     while true
-        action = search(S, A, state)
+        action = search(Q, N, S, A, state)
         
         if !haskey(N, (state, action))
             break
@@ -197,10 +224,59 @@ function mcts(mdp::HW3.DenseGridWorld, start_state, Q, N, t, iterations=7)
     end
 
   end
-  #return (Q,N,t)
+  return Q, N, t
 end 
 
+
+
+#function dummy_fill()
+#    # here is an example of how to visualize a dummy tree 
+#    # (q, n, and t should actually be filled in your mcts code, 
+#    # but for this we fill it manually)
+#    Q[(SA[1,1], :right)] = 0.0
+#    Q[(SA[2,1], :right)] = 0.0
+#    N[(SA[1,1], :right)] = 1
+#    N[(SA[2,1], :right)] = 0
+#    t[(SA[1,1], :right, SA[2,1])] = 1
+#end
+#dummy_fill()
+
+#mcts(q3_mdp, s0) # run once
+
+function run_problem_3()
+  mdp = DenseGridWorld(seed=4)
+
+  STATETYPE = statetype(mdp)
+  ACTIONTYPE = actiontype(mdp)
+
+  # This is an example state - it is a StaticArrays.SVector{2, Int}
+  s0 = SA[19,19]
+      
+  #       ####       Key            ####            Value     ####
+  Q = Dict{Tuple{STATETYPE, ACTIONTYPE},            Float64}()
+  N = Dict{Tuple{STATETYPE, ACTIONTYPE},            Int}()
+  t = Dict{Tuple{STATETYPE, ACTIONTYPE, STATETYPE}, Int}()
+
+  reward = simulate_with_mcts(mdp, Q, N, t, s0, 1, 7) # run once
+
+  inbrowser(visualize_tree(Q, N, t, s0), "firefox") 
+
+  println("Tree information after 7 iterations:")
+  for ((s, a), q_value) in Q
+    if s == s0
+      n_value = N[(s, a)]
+      println("Action $a: Q = $(round(q_value, digits=4)), N = $n_value")
+    end
+  end
+end
+
+############
+# Question 4
+############
+
 function simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterations)
+  S = states(mdp)
+  A = actions(mdp)
   state = starting_state
   total_reward = 0.0
   
@@ -251,7 +327,7 @@ function evaluate_mcts_planner(mdp, Q, N, t, starting_state, num_simulations, nu
   
   for sim in 1:num_simulations
     println("Running simulation $sim of $num_simulations...")
-    reward = simulate_with_mcts(mdp, starting_state, num_steps, mcts_iterations)
+    reward = simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterations)
     push!(rewards, reward)
   end
   
@@ -262,59 +338,21 @@ function evaluate_mcts_planner(mdp, Q, N, t, starting_state, num_simulations, nu
   return mean_reward, std_error, rewards
 end
 
-#function dummy_fill()
-#    # here is an example of how to visualize a dummy tree 
-#    # (q, n, and t should actually be filled in your mcts code, 
-#    # but for this we fill it manually)
-#    Q[(SA[1,1], :right)] = 0.0
-#    Q[(SA[2,1], :right)] = 0.0
-#    N[(SA[1,1], :right)] = 1
-#    N[(SA[2,1], :right)] = 0
-#    t[(SA[1,1], :right, SA[2,1])] = 1
-#end
-#dummy_fill()
-
-#mcts(q3_mdp, s0) # run once
-
-function run_problem_3()
+function run_problem_4()
   mdp = DenseGridWorld(seed=4)
-
+  
+  s0 = SA[19,19]
   STATETYPE = statetype(mdp)
   ACTIONTYPE = actiontype(mdp)
-
-  # This is an example state - it is a StaticArrays.SVector{2, Int}
-  s0 = SA[19,19]
-      
-  #       ####       Key            ####            Value     ####
   Q = Dict{Tuple{STATETYPE, ACTIONTYPE},            Float64}()
   N = Dict{Tuple{STATETYPE, ACTIONTYPE},            Int}()
   t = Dict{Tuple{STATETYPE, ACTIONTYPE, STATETYPE}, Int}()
+  
+  mean_reward, std_error, rewards = evaluate_mcts_planner(mdp, Q, N, t, s0, 100, 100, 1000)
 
-  Q, N, t = simulate_with_mcts(mdp, Q, N, t, s0, 1, 7) # run once
-
-  inbrowser(visualize_tree(Q, N, t, s0), "firefox") 
-
-  println("Tree information after 7 iterations:")
-  for ((s, a), q_value) in Q
-    if s == s0
-      n_value = N[(s, a)]
-      println("Action $a: Q = $(round(q_value, digits=4)), N = $n_value")
-    end
-  end
-end
-
-############
-# Question 4
-############
-
-function run_problem_4()
-evaluate_mcts_planner(q3_mdp, s0, 100, 100, 1000)
-# Run the evaluation
-mean_reward, std_error, rewards = evaluate_mcts_planner(q3_mdp, s0, 100, 100, 1000)
-
-println("Results of MCTS Planner Evaluation:")
-println("Mean accumulated reward: $(round(mean_reward, digits=4))")
-println("Standard error of the mean: $(round(std_error, digits=4))")
+  println("Results of MCTS Planner Evaluation:")
+  println("Mean accumulated reward: $(round(mean_reward, digits=4))")
+  println("Standard error of the mean: $(round(std_error, digits=4))")
 end
 
 # A starting point for the MCTS select_action function (a policy) which can be used for Questions 4 and 5

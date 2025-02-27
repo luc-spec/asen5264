@@ -21,18 +21,11 @@
             shellHook = ''
               # Install packages from Project.toml if it exists
               #!/bin/bash
-              if [ -e Project.toml ]
-              then
-                printf "\n=== Project.toml detected! Installing packages.."
-                #julia --project=. -e "import Pkg; Pkg.instantiate()"
-                julia --project=. -e 'import Pkg; Pkg.add(url="https://github.com/zsundberg/DMUStudent.jl")'
-                julia --project=. -e 'import Pkg; Pkg.add("LinearAlgebra")'
-                julia --project=. -e 'import Pkg; Pkg.add("POMDPs")'
-                julia --project=. -e 'import Pkg; Pkg.add("POMDPTools")'
-                julia --project=. -e 'import Pkg; Pkg.add("Plots")'
-              else
-                printf "\n=== No Project.toml detected.\n"
-              fi
+              julia --project=. -e 'import Pkg; Pkg.add(url="https://github.com/zsundberg/DMUStudent.jl")'
+              julia --project=. -e 'import Pkg; Pkg.add("LinearAlgebra")'
+              julia --project=. -e 'import Pkg; Pkg.add("POMDPs")'
+              julia --project=. -e 'import Pkg; Pkg.add("POMDPTools")'
+              julia --project=. -e 'import Pkg; Pkg.add("Plots")'
               printf "\nDone! Enjoy your Julia shell.\n\n"
           '';
         };

@@ -1,0 +1,3 @@
+[submodule "hw/DMUStudent.jl"]
+	path = hw/DMUStudent.jl
+	url = https://github.com/CU-ADCL/DMUStudent.jl

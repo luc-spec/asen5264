@@ -4,12 +4,34 @@ using D3Trees: inchrome, inbrowser
 using StaticArrays: SA
 using Statistics: mean, std
 using BenchmarkTools: @btime
+using ThreadTools
+
+function get_qnt(mdp::DenseGridWorld)  
+  STATETYPE = statetype(mdp)
+  ACTIONTYPE = actiontype(mdp)
+
+  # This is an example state - it is a StaticArrays.SVector{2, Int}
+  #s0 = SA[19,19]
+      
+  #       ####       Key            ####            Value     ####
+  Q = Dict{Tuple{STATETYPE, ACTIONTYPE},            Float64}()
+  N = Dict{Tuple{STATETYPE, ACTIONTYPE},            Int}()
+  t = Dict{Tuple{STATETYPE, ACTIONTYPE, STATETYPE}, Int}()
+
+  return Q, N, t
+end
+
+function init(seed=4)
+  mdp = DenseGridWorld(seed=seed)
+  Q, N, t = get_qnt(mdp)
+  return mdp, Q, N, t
+end 
 
 ############
 # Question 2
 ############
 
-function rollout(mdp, policy_function, s0, max_steps=100)
+function rollout(mdp::DenseGridWorld, policy_function, s0, max_steps=100)
   s = s0
   r_total = 0.0
   t = 0
@@ -32,8 +54,10 @@ end
 function reward_distance_findmin(current_state, destinations)
   distances = zeros(length(destinations))
   for index in eachindex(destinations)
-    distances[index] = euclidian_distance(destinations[index][1], destinations[index][2], 
-                                          current_state[1],       current_state[2])
+    distances[index] = euclidian_distance(
+			  destinations[index][1], destinations[index][2], 
+                          current_state[1],       current_state[2]
+		       )
   end
   return findmin(distances)
 end
@@ -74,7 +98,6 @@ function calculate_sem(array)
 end
 
 function policy_random(m, s)
-  # put a smarter heuristic policy here
   return rand(actions(m))
 end
 
@@ -84,7 +107,7 @@ function run_problem_2()
   initial = rand(initialstate(mdp))
 
   results = [rollout(mdp, policy_random, initial) for _ in 1:num_simulations]
-
+  @show calculate_sem(results)
   results = [rollout(mdp, policy_heuristic, initial) for _ in 1:num_simulations]
   @show calculate_sem(results)
 end
@@ -97,9 +120,9 @@ end
 ### A few sentences describing problem3-tree after 7 iterations:
 # 
 # The tree at this stage is relatively shallow. The root node [19,19] should
-# have a visit count of 7, but appears to only have a count of three. I would 
-# expect that few branches have only been traversed once, but in this tree most
-# of them are showing a count of zero... 
+# have a visit count of 6, and does. I would expect that few branches have 
+# only been traversed once, but in this tree most of them are showing a count 
+# of zero... 
 
 function search(Q, N, S, A, state, exploration_bonus=1.0)
     if !(state in S)
@@ -131,45 +154,37 @@ function search(Q, N, S, A, state, exploration_bonus=1.0)
     return state_actions[argmax(scores)][2]
 end
 
-#function rollout(mdp, state, depth=10)
-#  if depth == 0 || !(state in S)
-#    return 0
-#  end
-#  
-#  # Choose random action
-#  #action = rand(A)
-#  action = policy_heuristic(mdp, state)
-#  
-#  # Sample next state and reward
-#  next_state, reward = @gen(:sp, :r)(q3_mdp, state, action)
-#  
-#  # Recursively simulate
-#  return reward + discount(q3_mdp) * rollout(next_state, depth-1)
-#end
-
 function explore(Q, N, t, A, c)
   Ns = sum(N[(s,a)] for a in A)
   return argmax(a->Q[(s,a)] + c*bonus(N[(s,a)], Ns), A)
 end
 
-function mctsr(mdp::HW3.DenseGridWorld, start_state, Q, N, t, A, c, d=10)
+# r for recursion
+function mctsr(mdp::HW3.DenseGridWorld, s, Q, N, t, d=10)
+  S = states(mdp)
+  A = actions(mdp)
+  reward = 0
+
   if d ≤ 0
-    return π.U(s)
+    return reward
   end
 
-  if !haskey(N, (start_state, first(A)))
+  #a = explore(Q, N, t, A, c)
+  a = search(Q, N, S, A, s)
+  if !haskey(N, (s, a))
     for a in A
       N[(s,a)] = 0
-      Q[(s,a)] = 0.0
+      Q[(s,a)] = 0
     end
-    return 
+    #return 
   end
 
-  a = explore(Q, N, t, A, c)
-  next_state, reward = @gen(:sp, :r)(mdp, state, action)
-  q = reward + discount(mdp)*simulate!(mdp, next_state, d-1)
+  next_state, reward = @gen(:sp, :r)(mdp, s, a)
+  q = reward + discount(mdp)*mctsr(mdp, next_state, Q, N, t, d-1)
   N[(s,a)] += 1
-  Q[(s,a)] += (q-Q[(s,a)])/N[(s,a)]
+
+  #@show Q[(s,a)], N[(s,a)]
+  Q[(s,a)] += (q-(Q[(s,a)]/N[(s,a)]))
   return q
 end
 
@@ -179,6 +194,7 @@ function mcts(mdp::HW3.DenseGridWorld, start_state, Q, N, t, iterations=7)
 
   # Run for fixed number of iterations
   for k in 1:iterations
+    println("        MCTS iteration $k of $iterations...")
     state = start_state
     path = []
 
@@ -227,53 +243,6 @@ function mcts(mdp::HW3.DenseGridWorld, start_state, Q, N, t, iterations=7)
   return Q, N, t
 end 
 
-
-
-#function dummy_fill()
-#    # here is an example of how to visualize a dummy tree 
-#    # (q, n, and t should actually be filled in your mcts code, 
-#    # but for this we fill it manually)
-#    Q[(SA[1,1], :right)] = 0.0
-#    Q[(SA[2,1], :right)] = 0.0
-#    N[(SA[1,1], :right)] = 1
-#    N[(SA[2,1], :right)] = 0
-#    t[(SA[1,1], :right, SA[2,1])] = 1
-#end
-#dummy_fill()
-
-#mcts(q3_mdp, s0) # run once
-
-function run_problem_3()
-  mdp = DenseGridWorld(seed=4)
-
-  STATETYPE = statetype(mdp)
-  ACTIONTYPE = actiontype(mdp)
-
-  # This is an example state - it is a StaticArrays.SVector{2, Int}
-  s0 = SA[19,19]
-      
-  #       ####       Key            ####            Value     ####
-  Q = Dict{Tuple{STATETYPE, ACTIONTYPE},            Float64}()
-  N = Dict{Tuple{STATETYPE, ACTIONTYPE},            Int}()
-  t = Dict{Tuple{STATETYPE, ACTIONTYPE, STATETYPE}, Int}()
-
-  reward = simulate_with_mcts(mdp, Q, N, t, s0, 1, 7) # run once
-
-  inbrowser(visualize_tree(Q, N, t, s0), "firefox") 
-
-  println("Tree information after 7 iterations:")
-  for ((s, a), q_value) in Q
-    if s == s0
-      n_value = N[(s, a)]
-      println("Action $a: Q = $(round(q_value, digits=4)), N = $n_value")
-    end
-  end
-end
-
-############
-# Question 4
-############
-
 function simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterations)
   S = states(mdp)
   A = actions(mdp)
@@ -281,15 +250,17 @@ function simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterat
   total_reward = 0.0
   
   for step in 1:num_steps
+    println("    step $step of $num_steps...")
     # Clear previous search results
     empty!(Q)
     empty!(N)
     empty!(t)
     
     # Run MCTS from current state to choose the next action
-    mcts(mdp, state, Q, N, t, mcts_iterations)
+    #mcts(mdp, state, Q, N, t, mcts_iterations)
+    mctsr(mdp, state, Q, N, t, mcts_iterations)
     
-    # Get the best action based on visit counts (most robust policy)
+    # Get the best action based on visit counts
     best_action = nothing
     best_visits = -1
     
@@ -318,66 +289,92 @@ function simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterat
     state = next_state
   end
   
+  #return total_reward, Q, N, t
   return total_reward
 end
 
-function evaluate_mcts_planner(mdp, Q, N, t, starting_state, num_simulations, num_steps, mcts_iterations)
-  # Run the simulations and collect rewards
+function run_problem_3()
+  mdp, Q, N, t = init(4) # seed
+
+  # This is an example state - it is a StaticArrays.SVector{2, Int}
+  s0 = SA[19,19]
+      
+  reward = simulate_with_mcts(mdp, Q, N, t, s0, 1, 7) # run once
+
+  inbrowser(visualize_tree(Q, N, t, s0), "firefox") 
+
+  println("Tree information after 7 iterations:")
+  for ((s, a), q_value) in Q
+    if s == s0
+      n_value = N[(s, a)]
+      println("Action $a: Q = $(round(q_value, digits=4)), N = $n_value")
+    end
+  end
+end
+
+############
+# Question 4
+############
+
+function run_problem_4()
+  mdp, Q, N, t = init(4) # seed
+  s0 = rand(initialstate(mdp))
+
   rewards = []
+
+  num_steps = 100
+  num_simulations = 100
+  mcts_iterations = 1000
+  
+  mean_reward = 0.0
+  std_error = 0.0
   
   for sim in 1:num_simulations
     println("Running simulation $sim of $num_simulations...")
-    reward = simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterations)
+    reward = simulate_with_mcts(mdp, Q, N, t, s0, num_steps, mcts_iterations)
     push!(rewards, reward)
   end
   
   # Calculate statistics
-  mean_reward = mean(rewards)
-  std_error = std(rewards) / sqrt(length(rewards))
-  
-  return mean_reward, std_error, rewards
-end
-
-function run_problem_4()
-  mdp = DenseGridWorld(seed=4)
-  
-  s0 = SA[19,19]
-  STATETYPE = statetype(mdp)
-  ACTIONTYPE = actiontype(mdp)
-  Q = Dict{Tuple{STATETYPE, ACTIONTYPE},            Float64}()
-  N = Dict{Tuple{STATETYPE, ACTIONTYPE},            Int}()
-  t = Dict{Tuple{STATETYPE, ACTIONTYPE, STATETYPE}, Int}()
-  
-  mean_reward, std_error, rewards = evaluate_mcts_planner(mdp, Q, N, t, s0, 100, 100, 1000)
+  @show rewards
+  #mean_reward = mean(rewards)
+  #std_error = std(rewards) / sqrt(length(rewards))
+  mean_reward, std_error = calculate_sem(rewards)
 
   println("Results of MCTS Planner Evaluation:")
   println("Mean accumulated reward: $(round(mean_reward, digits=4))")
   println("Standard error of the mean: $(round(std_error, digits=4))")
 end
 
-# A starting point for the MCTS select_action function (a policy) which can be used for Questions 4 and 5
+# A starting point for the MCTS select_action function (a policy) 
+# which can be used for Questions 4 and 5
 function select_action(m, s)
+  Q, N, t = get_qnt(m)
+  q = 0
 
   start = time_ns()
-  n = Dict{Tuple{statetype(m), actiontype(m)}, Int}()
-  q = Dict{Tuple{statetype(m), actiontype(m)}, Float64}()
-
-
+  # alternatively, set 40ms time limit
+  # while time_ns() < start + 40_000_000 
+  #Threads.@threads for _ in 1:1000
   for _ in 1:1000
-  # while time_ns() < start + 40_000_000 # you can replace the above line with this if you want to limit this loop to run within 40ms
-      break # replace this with mcts iterations to fill n and q
+    q = mctsr(m, s, Q, N, t)
+    #results = mcts(m, s, Q, N, t)
   end
 
   # select a good action based on q and/or n
+  best_action = argmax(Q)
+  #@show best_action
 
-  return rand(actions(m)) # this dummy function returns a random action, but you should return your selected action
+  return best_action[2] # the actual action
 end
 
 function run_problem_5()
-@btime select_action(m, SA[35,35]) # you can use this to see how much time your function takes to run. A good time is 10-20ms.
-
-# use the code below to evaluate the MCTS policy
-@show results = [rollout(m, select_action, rand(initialstate(m)), max_steps=100) for _ in 1:100]
+  mdp = DenseGridWorld(seed=10)
+  
+  #@btime select_action(m, SA[35,35]) # aiming for 10-20ms
+  select_action(mdp, SA[35,35]) # aiming for 10-20ms
+  
+  @show results = [rollout(mdp, select_action, rand(initialstate(mdp)), max_steps=100) for _ in 1:100]
 end 
 
 ############

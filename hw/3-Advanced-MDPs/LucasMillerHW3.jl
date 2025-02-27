@@ -257,8 +257,8 @@ function simulate_with_mcts(mdp, Q, N, t, starting_state, num_steps, mcts_iterat
     empty!(t)
     
     # Run MCTS from current state to choose the next action
-    #mcts(mdp, state, Q, N, t, mcts_iterations)
-    mctsr(mdp, state, Q, N, t, mcts_iterations)
+    mcts(mdp, state, Q, N, t, mcts_iterations)
+    #mctsr(mdp, state, Q, N, t, mcts_iterations)
     
     # Get the best action based on visit counts
     best_action = nothing
